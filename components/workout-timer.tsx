@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Play, Pause, RotateCcw } from "lucide-react"
@@ -17,33 +17,82 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   const [isActive, setIsActive] = useState(autoStart)
   const [progress, setProgress] = useState(100)
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
+  const startTimeRef = useRef<number | null>(null)
+  const initialTimeLeftRef = useRef<number>(duration)
+  const completedRef = useRef(false)
 
-    if (isActive) {
-      interval = setInterval(() => {
-        setTimeLeft((prevTime) => {
-          if (prevTime <= 1) {
-            clearInterval(interval as NodeJS.Timeout)
-            setIsActive(false)
-            onComplete()
-            return 0
-          }
-          return prevTime - 1
-        })
-      }, 1000)
-    } else if (interval) {
-      clearInterval(interval)
+  const recomputeTimeLeft = () => {
+    if (startTimeRef.current == null) return
+    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
+    const remaining = initialTimeLeftRef.current - elapsed
+    if (remaining <= 0) {
+      setTimeLeft(0)
+      if (!completedRef.current) {
+        completedRef.current = true
+        setIsActive(false)
+        sendNotification()
+        onComplete()
+      }
+    } else {
+      setTimeLeft(remaining)
     }
+  }
+
+  useEffect(() => {
+    if (!isActive) {
+      startTimeRef.current = null
+      return
+    }
+
+    completedRef.current = false
+    startTimeRef.current = Date.now()
+    initialTimeLeftRef.current = timeLeft
+
+    const tick = () => {
+      recomputeTimeLeft()
+    }
+
+    const interval = setInterval(tick, 250)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        recomputeTimeLeft()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
     return () => {
-      if (interval) clearInterval(interval)
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [isActive, onComplete])
+  }, [isActive])
 
   useEffect(() => {
     setProgress((timeLeft / duration) * 100)
   }, [timeLeft, duration])
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
+
+  const sendNotification = () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return
+    if (Notification.permission === "granted") {
+      try {
+        new Notification("Workout complete", {
+          body: "Time to start your next set!",
+          icon: "/icon-192.png",
+        })
+      } catch {
+        try {
+          new Notification("Workout complete", { body: "Time to start your next set!" })
+        } catch {}
+      }
+    }
+  }
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -52,6 +101,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   }
 
   const toggleTimer = () => {
+    if (timeLeft === 0) return
     setIsActive(!isActive)
   }
 
@@ -59,6 +109,8 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     setIsActive(false)
     setTimeLeft(duration)
     setProgress(100)
+    startTimeRef.current = null
+    completedRef.current = false
   }
 
   const getTimerColor = () => {
