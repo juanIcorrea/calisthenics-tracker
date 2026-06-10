@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Play, Pause, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { playAlarm, stopAlarmSound } from "@/lib/sounds"
 
 interface WorkoutTimerProps {
   duration: number
@@ -32,9 +31,6 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
         completedRef.current = true
         setIsActive(false)
         sendNotification()
-        try {
-          playAlarm()
-        } catch {}
         onComplete()
       }
     } else {
@@ -77,36 +73,50 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   }, [timeLeft, duration])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+    if (typeof window === "undefined") return
+    if (!("serviceWorker" in navigator)) return
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {})
     }
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        if (registration.active && !navigator.serviceWorker.controller) {
+          registration.active.postMessage({ type: "SKIP_WAITING" })
+        }
+      })
+      .catch(() => {})
   }, [])
-
-  useEffect(() => {
-    if (timeLeft !== 0) return
-    const stopOnInteraction = () => {
-      stopAlarmSound()
-    }
-    const events: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "touchstart"]
-    events.forEach((e) => window.addEventListener(e, stopOnInteraction, { once: true, passive: true }))
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, stopOnInteraction))
-    }
-  }, [timeLeft])
 
   const sendNotification = () => {
     if (typeof window === "undefined" || !("Notification" in window)) return
-    if (Notification.permission === "granted") {
-      try {
-        new Notification("Workout complete", {
-          body: "Time to start your next set!",
-          icon: "/icon-192.png",
-        })
-      } catch {
-        try {
-          new Notification("Workout complete", { body: "Time to start your next set!" })
-        } catch {}
+    if (Notification.permission !== "granted") return
+
+    if ("serviceWorker" in navigator) {
+      const send = (sw: ServiceWorker | null) => {
+        if (sw) {
+          sw.postMessage({ type: "TIMER_COMPLETE" })
+        } else {
+          try {
+            new Notification("Workout complete", { body: "Time to start your next set!" })
+          } catch {}
+        }
       }
+      if (navigator.serviceWorker.controller) {
+        send(navigator.serviceWorker.controller)
+      } else {
+        navigator.serviceWorker.ready
+          .then((registration) => send(registration.active))
+          .catch(() => {
+            try {
+              new Notification("Workout complete", { body: "Time to start your next set!" })
+            } catch {}
+          })
+      }
+    } else {
+      try {
+        new Notification("Workout complete", { body: "Time to start your next set!" })
+      } catch {}
     }
   }
 
