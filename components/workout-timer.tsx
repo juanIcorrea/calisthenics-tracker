@@ -73,24 +73,50 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   }, [timeLeft, duration])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+    if (typeof window === "undefined") return
+    if (!("serviceWorker" in navigator)) return
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {})
     }
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        if (registration.active && !navigator.serviceWorker.controller) {
+          registration.active.postMessage({ type: "SKIP_WAITING" })
+        }
+      })
+      .catch(() => {})
   }, [])
 
   const sendNotification = () => {
     if (typeof window === "undefined" || !("Notification" in window)) return
-    if (Notification.permission === "granted") {
-      try {
-        new Notification("Workout complete", {
-          body: "Time to start your next set!",
-          icon: "/icon-192.png",
-        })
-      } catch {
-        try {
-          new Notification("Workout complete", { body: "Time to start your next set!" })
-        } catch {}
+    if (Notification.permission !== "granted") return
+
+    if ("serviceWorker" in navigator) {
+      const send = (sw: ServiceWorker | null) => {
+        if (sw) {
+          sw.postMessage({ type: "TIMER_COMPLETE" })
+        } else {
+          try {
+            new Notification("Workout complete", { body: "Time to start your next set!" })
+          } catch {}
+        }
       }
+      if (navigator.serviceWorker.controller) {
+        send(navigator.serviceWorker.controller)
+      } else {
+        navigator.serviceWorker.ready
+          .then((registration) => send(registration.active))
+          .catch(() => {
+            try {
+              new Notification("Workout complete", { body: "Time to start your next set!" })
+            } catch {}
+          })
+      }
+    } else {
+      try {
+        new Notification("Workout complete", { body: "Time to start your next set!" })
+      } catch {}
     }
   }
 
