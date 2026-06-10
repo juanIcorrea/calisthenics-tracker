@@ -30,7 +30,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
       if (!completedRef.current) {
         completedRef.current = true
         setIsActive(false)
-        sendNotification()
+        showLocalNotification()
         onComplete()
       }
     } else {
@@ -41,12 +41,15 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   useEffect(() => {
     if (!isActive) {
       startTimeRef.current = null
+      sendStopMessage()
       return
     }
 
     completedRef.current = false
-    startTimeRef.current = Date.now()
+    const startTime = Date.now()
+    startTimeRef.current = startTime
     initialTimeLeftRef.current = timeLeft
+    sendStartMessage(timeLeft, startTime)
 
     const tick = () => {
       recomputeTimeLeft()
@@ -65,6 +68,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     return () => {
       clearInterval(interval)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
+      sendStopMessage()
     }
   }, [isActive])
 
@@ -88,36 +92,44 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
       .catch(() => {})
   }, [])
 
-  const sendNotification = () => {
+  const sendStartMessage = (duration: number, startTime: number) => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
+    const send = (sw: ServiceWorker | null) => {
+      if (sw) {
+        sw.postMessage({ type: "TIMER_START", duration, startTime })
+      }
+    }
+    if (navigator.serviceWorker.controller) {
+      send(navigator.serviceWorker.controller)
+    } else {
+      navigator.serviceWorker.ready
+        .then((registration) => send(registration.active))
+        .catch(() => {})
+    }
+  }
+
+  const sendStopMessage = () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
+    const send = (sw: ServiceWorker | null) => {
+      if (sw) {
+        sw.postMessage({ type: "TIMER_STOP" })
+      }
+    }
+    if (navigator.serviceWorker.controller) {
+      send(navigator.serviceWorker.controller)
+    } else {
+      navigator.serviceWorker.ready
+        .then((registration) => send(registration.active))
+        .catch(() => {})
+    }
+  }
+
+  const showLocalNotification = () => {
     if (typeof window === "undefined" || !("Notification" in window)) return
     if (Notification.permission !== "granted") return
-
-    if ("serviceWorker" in navigator) {
-      const send = (sw: ServiceWorker | null) => {
-        if (sw) {
-          sw.postMessage({ type: "TIMER_COMPLETE" })
-        } else {
-          try {
-            new Notification("Workout complete", { body: "Time to start your next set!" })
-          } catch {}
-        }
-      }
-      if (navigator.serviceWorker.controller) {
-        send(navigator.serviceWorker.controller)
-      } else {
-        navigator.serviceWorker.ready
-          .then((registration) => send(registration.active))
-          .catch(() => {
-            try {
-              new Notification("Workout complete", { body: "Time to start your next set!" })
-            } catch {}
-          })
-      }
-    } else {
-      try {
-        new Notification("Workout complete", { body: "Time to start your next set!" })
-      } catch {}
-    }
+    try {
+      new Notification("Workout complete", { body: "Time to start your next set!" })
+    } catch {}
   }
 
   const formatTime = (seconds: number) => {
