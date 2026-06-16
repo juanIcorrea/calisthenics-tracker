@@ -17,10 +17,28 @@ export default function SelectWorkoutPage() {
 
   useEffect(() => {
     const suggested = getCurrentWorkoutDay()
-    setSuggestedWorkout(suggested)
-    setSelectedExercise(suggested.exercise)
-    setSelectedWorkoutType(suggested.workoutType)
-  }, [getCurrentWorkoutDay])
+
+    // Guard: never suggest a rest day; find the next active day if needed
+    let activeSuggested = suggested
+    if (suggested.exercise === "Descanso" || suggested.workoutType === "Descanso") {
+      const schedule = getWorkoutSchedule()
+      const lastDayIndex = schedule.findIndex(
+        (day) => day.workoutType === suggested.workoutType && day.exercise === suggested.exercise,
+      )
+      for (let i = 1; i <= schedule.length; i++) {
+        const idx = (lastDayIndex + i) % schedule.length
+        const day = schedule[idx]
+        if (day.exercise !== "Descanso" && day.workoutType !== "Descanso") {
+          activeSuggested = day
+          break
+        }
+      }
+    }
+
+    setSuggestedWorkout(activeSuggested)
+    setSelectedExercise(activeSuggested.exercise)
+    setSelectedWorkoutType(activeSuggested.workoutType)
+  }, [getCurrentWorkoutDay, getWorkoutSchedule])
 
   const handleStartWorkout = () => {
     setIsTransitioning(true)
