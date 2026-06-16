@@ -39,6 +39,10 @@ export default function WorkoutPage() {
   }, [getCurrentWorkoutDay])
 
   const handleComplete = (workoutData: any) => {
+    if (currentWorkout?.workoutType === "Descanso") {
+      return
+    }
+
     completeWorkout({
       ...workoutData,
       date: new Date().toISOString(),
