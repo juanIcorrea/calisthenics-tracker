@@ -20,6 +20,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   const startTimeRef = useRef<number | null>(null)
   const initialTimeLeftRef = useRef<number>(duration)
   const completedRef = useRef(false)
+  const timerName = "calisthenics-rest-timer"
 
   const recomputeTimeLeft = () => {
     if (startTimeRef.current == null) return
@@ -30,12 +31,22 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
       if (!completedRef.current) {
         completedRef.current = true
         setIsActive(false)
-        showLocalNotification()
+        showLocalNotification(
+          "Workout complete",
+          "Time to start your next set!",
+        )
+        dispatchTimerEndedEvent()
         onComplete()
       }
     } else {
       setTimeLeft(remaining)
     }
+  }
+
+  const dispatchTimerEndedEvent = () => {
+    try {
+      window.dispatchEvent(new CustomEvent(timerName, { detail: { ended: true } }))
+    } catch {}
   }
 
   useEffect(() => {
@@ -72,6 +83,47 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     }
   }, [isActive])
 
+  // iOS fallback: detect if timer ended while page was hidden
+  useEffect(() => {
+    const handleReturn = () => {
+      if (document.visibilityState !== "visible") return
+      if (completedRef.current) return
+      if (startTimeRef.current == null) return
+      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
+      const remaining = initialTimeLeftRef.current - elapsed
+      if (remaining <= 0 && !completedRef.current) {
+        completedRef.current = true
+        setTimeLeft(0)
+        setIsActive(false)
+        showLocalNotification(
+          "Workout complete",
+          "Time to start your next set!",
+        )
+        dispatchTimerEndedEvent()
+        onComplete()
+      }
+    }
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "TIMER_ENDED") {
+        if (!completedRef.current) {
+          completedRef.current = true
+          setTimeLeft(0)
+          setIsActive(false)
+          onComplete()
+        }
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleReturn)
+    navigator.serviceWorker?.addEventListener("message", onMessage)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleReturn)
+      navigator.serviceWorker?.removeEventListener("message", onMessage)
+    }
+  }, [onComplete])
+
   useEffect(() => {
     setProgress((timeLeft / duration) * 100)
   }, [timeLeft, duration])
@@ -94,41 +146,27 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
 
   const sendStartMessage = (duration: number, startTime: number) => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
-    const send = (sw: ServiceWorker | null) => {
-      if (sw) {
-        sw.postMessage({ type: "TIMER_START", duration, startTime })
-      }
-    }
-    if (navigator.serviceWorker.controller) {
-      send(navigator.serviceWorker.controller)
-    } else {
-      navigator.serviceWorker.ready
-        .then((registration) => send(registration.active))
-        .catch(() => {})
-    }
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        registration.active?.postMessage({ type: "TIMER_START", duration, startTime })
+      })
+      .catch(() => {})
   }
 
   const sendStopMessage = () => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
-    const send = (sw: ServiceWorker | null) => {
-      if (sw) {
-        sw.postMessage({ type: "TIMER_STOP" })
-      }
-    }
-    if (navigator.serviceWorker.controller) {
-      send(navigator.serviceWorker.controller)
-    } else {
-      navigator.serviceWorker.ready
-        .then((registration) => send(registration.active))
-        .catch(() => {})
-    }
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        registration.active?.postMessage({ type: "TIMER_STOP" })
+      })
+      .catch(() => {})
   }
 
-  const showLocalNotification = () => {
+  const showLocalNotification = (title: string, body: string) => {
     if (typeof window === "undefined" || !("Notification" in window)) return
     if (Notification.permission !== "granted") return
     try {
-      new Notification("Workout complete", { body: "Time to start your next set!" })
+      new Notification(title, { body })
     } catch {}
   }
 
