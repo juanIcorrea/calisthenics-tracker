@@ -6,62 +6,68 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim())
 })
 
-self.TIMER_DATA = null
-self.TIMER_INTERVAL = null
+let timerId = null
 
 function clearTimer() {
-  if (self.TIMER_INTERVAL) {
-    clearInterval(self.TIMER_INTERVAL)
-    self.TIMER_INTERVAL = null
+  if (timerId) {
+    clearTimeout(timerId)
+    timerId = null
   }
-  self.TIMER_DATA = null
 }
 
-function startTimer(duration, startTime) {
+function scheduleNotification(duration, startTime) {
   clearTimer()
-  self.TIMER_DATA = { duration, startTime }
+  const remaining = (startTime + duration * 1000) - Date.now()
+  if (remaining <= 0) {
+    fireNotification()
+    return
+  }
+  timerId = setTimeout(fireNotification, remaining)
+}
 
-  self.TIMER_INTERVAL = setInterval(function check() {
-    const elapsed = Date.now() - self.TIMER_DATA.startTime
-    if (elapsed >= self.TIMER_DATA.duration * 1000) {
-      self.registration.showNotification("Workout complete", {
-        body: "Time to start your next set!",
-        vibrate: [200, 100, 200, 100, 200],
-        requireInteraction: true,
-        tag: "workout-timer",
-        icon: "/icon-192.png",
-      })
-      clearInterval(self.TIMER_INTERVAL)
-      self.TIMER_DATA = null
-    }
-  }, 1000)
+function fireNotification() {
+  timerId = null
+  self.registration.showNotification("Workout complete", {
+    body: "Time to start your next set!",
+    vibrate: [200, 100, 200, 100, 200, 100, 400],
+    requireInteraction: true,
+    tag: "workout-timer",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+  })
 }
 
 self.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object") return
+  const { type } = event.data
 
-  if (event.data.type === "SKIP_WAITING") {
+  if (type === "SKIP_WAITING") {
     self.skipWaiting()
     return
   }
 
-  if (event.data.type === "TIMER_START") {
+  if (type === "TIMER_START") {
     const { duration, startTime } = event.data
     if (typeof duration !== "number" || typeof startTime !== "number") return
-    event.waitUntil(
-      (async () => {
-        startTimer(duration, startTime)
-      })()
-    )
+    scheduleNotification(duration, startTime)
     return
   }
 
-  if (event.data.type === "TIMER_STOP") {
-    event.waitUntil(
-      (async () => {
-        clearTimer()
-      })()
-    )
+  if (type === "TIMER_STOP") {
+    clearTimer()
     return
   }
+})
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      if (clients.length > 0) {
+        clients[0].focus()
+      } else {
+        self.clients.openWindow("/")
+      }
+    })
+  )
 })

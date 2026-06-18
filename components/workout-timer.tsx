@@ -21,27 +21,30 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   const initialTimeLeftRef = useRef<number>(duration)
   const completedRef = useRef(false)
 
+  const finishTimer = () => {
+    if (completedRef.current) return
+    completedRef.current = true
+    setTimeLeft(0)
+    setIsActive(false)
+    onComplete()
+    showLocalNotification("Workout complete", "Time to start your next set!")
+  }
+
   const recomputeTimeLeft = () => {
     if (startTimeRef.current == null) return
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
     const remaining = initialTimeLeftRef.current - elapsed
     if (remaining <= 0) {
-      setTimeLeft(0)
-      if (!completedRef.current) {
-        completedRef.current = true
-        setIsActive(false)
-        showLocalNotification()
-        onComplete()
-      }
+      finishTimer()
     } else {
       setTimeLeft(remaining)
     }
   }
 
+  // Timer tick + visibility change handler (runs while isActive)
   useEffect(() => {
     if (!isActive) {
       startTimeRef.current = null
-      sendStopMessage()
       return
     }
 
@@ -51,23 +54,18 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     initialTimeLeftRef.current = timeLeft
     sendStartMessage(timeLeft, startTime)
 
-    const tick = () => {
-      recomputeTimeLeft()
-    }
+    const interval = setInterval(() => recomputeTimeLeft(), 250)
 
-    const interval = setInterval(tick, 250)
-
-    const handleVisibilityChange = () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         recomputeTimeLeft()
       }
     }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
       clearInterval(interval)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
       sendStopMessage()
     }
   }, [isActive])
@@ -76,6 +74,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     setProgress((timeLeft / duration) * 100)
   }, [timeLeft, duration])
 
+  // Register service worker and request notification permission once
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!("serviceWorker" in navigator)) return
@@ -94,41 +93,27 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
 
   const sendStartMessage = (duration: number, startTime: number) => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
-    const send = (sw: ServiceWorker | null) => {
-      if (sw) {
-        sw.postMessage({ type: "TIMER_START", duration, startTime })
-      }
-    }
-    if (navigator.serviceWorker.controller) {
-      send(navigator.serviceWorker.controller)
-    } else {
-      navigator.serviceWorker.ready
-        .then((registration) => send(registration.active))
-        .catch(() => {})
-    }
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        registration.active?.postMessage({ type: "TIMER_START", duration, startTime })
+      })
+      .catch(() => {})
   }
 
   const sendStopMessage = () => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
-    const send = (sw: ServiceWorker | null) => {
-      if (sw) {
-        sw.postMessage({ type: "TIMER_STOP" })
-      }
-    }
-    if (navigator.serviceWorker.controller) {
-      send(navigator.serviceWorker.controller)
-    } else {
-      navigator.serviceWorker.ready
-        .then((registration) => send(registration.active))
-        .catch(() => {})
-    }
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        registration.active?.postMessage({ type: "TIMER_STOP" })
+      })
+      .catch(() => {})
   }
 
-  const showLocalNotification = () => {
+  const showLocalNotification = (title: string, body: string) => {
     if (typeof window === "undefined" || !("Notification" in window)) return
     if (Notification.permission !== "granted") return
     try {
-      new Notification("Workout complete", { body: "Time to start your next set!" })
+      new Notification(title, { body, tag: "workout-timer" })
     } catch {}
   }
 
