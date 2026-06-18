@@ -20,35 +20,28 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   const startTimeRef = useRef<number | null>(null)
   const initialTimeLeftRef = useRef<number>(duration)
   const completedRef = useRef(false)
-  const timerName = "calisthenics-rest-timer"
+
+  const finishTimer = () => {
+    if (completedRef.current) return
+    completedRef.current = true
+    setTimeLeft(0)
+    setIsActive(false)
+    onComplete()
+    showLocalNotification("Workout complete", "Time to start your next set!")
+  }
 
   const recomputeTimeLeft = () => {
     if (startTimeRef.current == null) return
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
     const remaining = initialTimeLeftRef.current - elapsed
     if (remaining <= 0) {
-      setTimeLeft(0)
-      if (!completedRef.current) {
-        completedRef.current = true
-        setIsActive(false)
-        showLocalNotification(
-          "Workout complete",
-          "Time to start your next set!",
-        )
-        dispatchTimerEndedEvent()
-        onComplete()
-      }
+      finishTimer()
     } else {
       setTimeLeft(remaining)
     }
   }
 
-  const dispatchTimerEndedEvent = () => {
-    try {
-      window.dispatchEvent(new CustomEvent(timerName, { detail: { ended: true } }))
-    } catch {}
-  }
-
+  // Timer tick + visibility change handler (runs while isActive)
   useEffect(() => {
     if (!isActive) {
       startTimeRef.current = null
@@ -62,72 +55,27 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     initialTimeLeftRef.current = timeLeft
     sendStartMessage(timeLeft, startTime)
 
-    const tick = () => {
-      recomputeTimeLeft()
-    }
+    const interval = setInterval(() => recomputeTimeLeft(), 250)
 
-    const interval = setInterval(tick, 250)
-
-    const handleVisibilityChange = () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         recomputeTimeLeft()
       }
     }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
       clearInterval(interval)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
       sendStopMessage()
     }
   }, [isActive])
-
-  // iOS fallback: detect if timer ended while page was hidden
-  useEffect(() => {
-    const handleReturn = () => {
-      if (document.visibilityState !== "visible") return
-      if (completedRef.current) return
-      if (startTimeRef.current == null) return
-      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-      const remaining = initialTimeLeftRef.current - elapsed
-      if (remaining <= 0 && !completedRef.current) {
-        completedRef.current = true
-        setTimeLeft(0)
-        setIsActive(false)
-        showLocalNotification(
-          "Workout complete",
-          "Time to start your next set!",
-        )
-        dispatchTimerEndedEvent()
-        onComplete()
-      }
-    }
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "TIMER_ENDED") {
-        if (!completedRef.current) {
-          completedRef.current = true
-          setTimeLeft(0)
-          setIsActive(false)
-          onComplete()
-        }
-      }
-    }
-
-    document.addEventListener("visibilitychange", handleReturn)
-    navigator.serviceWorker?.addEventListener("message", onMessage)
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleReturn)
-      navigator.serviceWorker?.removeEventListener("message", onMessage)
-    }
-  }, [onComplete])
 
   useEffect(() => {
     setProgress((timeLeft / duration) * 100)
   }, [timeLeft, duration])
 
+  // Register service worker and request notification permission once
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!("serviceWorker" in navigator)) return
