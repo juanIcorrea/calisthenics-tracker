@@ -45,7 +45,6 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   useEffect(() => {
     if (!isActive) {
       startTimeRef.current = null
-      sendStopMessage()
       return
     }
 
@@ -114,7 +113,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     if (typeof window === "undefined" || !("Notification" in window)) return
     if (Notification.permission !== "granted") return
     try {
-      new Notification(title, { body })
+      new Notification(title, { body, tag: "workout-timer" })
     } catch {}
   }
 

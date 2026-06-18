@@ -32,8 +32,8 @@ function fireNotification() {
     vibrate: [200, 100, 200, 100, 200, 100, 400],
     requireInteraction: true,
     tag: "workout-timer",
-    icon: "/icon.svg",
-    badge: "/icon.svg",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
   })
 }
 

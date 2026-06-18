@@ -23,7 +23,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon.svg" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="apple-touch-icon" href="/apple-icon.png" />
         <title>Calisthenics Tracker</title>
         <meta name="description" content="Track your calisthenics routine and progress" />
       </head>
