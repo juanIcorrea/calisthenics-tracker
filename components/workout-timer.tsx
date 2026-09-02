@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Play, Pause, RotateCcw } from "lucide-react"
+import { getPermission, requestNotificationPermission } from "@/lib/notifications"
 import { cn } from "@/lib/utils"
 
 interface WorkoutTimerProps {
@@ -73,13 +74,10 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
     setProgress((timeLeft / duration) * 100)
   }, [timeLeft, duration])
 
-  // Register service worker and request notification permission once
+  // Register service worker once
   useEffect(() => {
     if (typeof window === "undefined") return
     if (!("serviceWorker" in navigator)) return
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {})
-    }
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
@@ -91,10 +89,9 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   }, [])
 
   // Re-request on a real user gesture (mobile browsers may block non-gesture prompts)
-  const requestNotificationPermission = () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return
-    if (Notification.permission !== "default") return
-    Notification.requestPermission().catch(() => {})
+  const requestPermissionIfDefault = () => {
+    if (getPermission() !== "default") return
+    requestNotificationPermission().catch(() => {})
   }
 
   const sendStartMessage = (duration: number, startTime: number) => {
@@ -124,7 +121,7 @@ export default function WorkoutTimer({ duration, onComplete, autoStart = false }
   const toggleTimer = () => {
     if (timeLeft === 0) return
     if (!isActive) {
-      requestNotificationPermission()
+      requestPermissionIfDefault()
     }
     setIsActive(!isActive)
   }

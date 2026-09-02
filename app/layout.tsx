@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import ThemeColor from "@/components/theme-color"
 import Header from "@/components/header"
 import DailyReminder from "@/components/daily-reminder"
+import NotificationsSetup from "@/components/notifications-setup"
 import PageTransition from "@/components/page-transition"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -39,6 +40,7 @@ export default function RootLayout({
             </main>
           </div>
           <DailyReminder />
+          <NotificationsSetup />
           <ThemeColor />
         </ThemeProvider>
       </body>
